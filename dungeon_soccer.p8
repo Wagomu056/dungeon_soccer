@@ -141,6 +141,7 @@ class.chara.new = function()
 	obj.anim_controller = anim.controller.new()
 	obj.pre_elapsed_time = 0.0
 	obj.delta_time = 0.0
+	obj.direction = "right"
 
 	-- function
 	obj.init = function(self)
@@ -159,6 +160,13 @@ class.chara.new = function()
 		self:object_update_animation()
 		self.anim_controller:update(self.delta_time)
 		self.spr, self.w, self.h = self.anim_controller:get_spr()
+	end
+
+	obj.draw = function(self)
+		spr(self.spr, 
+			self.x, self.y,
+			self.w, self.h,
+			self.direction == "left")
 	end
 
 	return obj
@@ -194,8 +202,10 @@ class.player.new = function()
 
 		if(btn(0))then
 			self.x -= 1
+			self.direction = "left"
 		elseif(btn(1))then
 			self.x += 1
+			self.direction = "right"
 		elseif(btn(2))then
 			self.y -= 1
 		elseif(btn(3))then
