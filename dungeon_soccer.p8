@@ -1,6 +1,51 @@
 pico-8 cartridge // http://www.pico-8.com
 version 16
 __lua__
+-- debug print --
+dbg = {}
+dbg.print = {}
+dbg.print.data = function(msg, frame, color)
+	local obj = {}
+	obj.msg = msg
+	obj.frame = frame
+	if color != nil then
+		obj.color = color
+	else
+		obj.color = 12
+	end
+
+	return obj
+end
+
+dbg.print.new = function()
+	local obj = {}
+
+	obj.table = {}
+
+	obj.set_print = function(self, msg, frame, color)
+		local data = dbg.print.data(msg, frame, color)
+		add(self.table, data)
+	end
+
+	obj.update = function(self)
+		for i, data in pairs(self.table) do
+			if (data.frame - 1) <= 0 then
+				del(self.table, self.table[i])
+			end
+		end
+	end
+
+	obj.draw = function(self)
+		local offset = 8
+		for i, data in pairs(self.table) do
+			print(data.msg, 0, offset * (i - 1), data.color)
+		end
+	end
+
+	return obj
+end
+
+local dbg_print = dbg.print.new()
 
 -- anim --
 anim = {}
@@ -289,6 +334,7 @@ class.player.new = function()
 
 	obj.adjust_by_col = function(self)
 		local is_wall, col_x, col_y = check_wall_by_col(self.col)
+		dbg_print:set_print(is_wall, 1)
 		if is_wall == false then
 			return
 		end
@@ -337,14 +383,14 @@ function _init()
 end
 
 function _update()
+	dbg_print:update()
 	player:update()
 end
 
 function _draw()
-	--rectfill(0, 0, 580, 540, 0)
 	map_info:draw()
-
 	player:draw()
+	dbg_print:draw()
 end
 
 __gfx__
