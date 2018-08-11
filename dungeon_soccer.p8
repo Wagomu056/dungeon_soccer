@@ -69,6 +69,44 @@ anim.controller.new = function()
 	return obj
 end
 
+-- collision --
+local col = {}
+col.data = {}
+col.data.new = function(x, y, size_x, size_y)
+	local obj = {}
+
+	obj.ax = x
+	obj.ay = y
+	obj.bx = x + size_x
+	obj.by = y + size_y
+
+	return obj
+end
+
+local c_inv_eight = 1 / 8
+function check_wall(x, y)
+	local map_val = mget(x / 8, y / 8)
+	return (fget(map_val,0)), (x % 8), (y % 8)
+end
+
+function check_wall_by_col(col_data)
+	local is_wall_a, col_x_a, col_y_a =
+	check_wall(col_data.ax, col_data.ay)
+
+	local is_wall_b, col_x_b, col_y_b =
+	check_wall(col_data.bx, col_data.by)
+
+	if is_wall_a == is_wall_b then
+		return false
+	end
+
+	if is_wall_a == true then
+		return is_wall_a, col_x_a, (-1 * col_y_a)
+	else
+		return is_wall_b, (-1 * col_x_b), col_y_b
+	end
+end
+
 -- class --
 local class = {}
 
@@ -115,6 +153,7 @@ class.object.new = function()
 	end
 	obj.update = function(self)
 		self:actor_update()
+		self:update_pre()
 		self:update_control()
 		self:update_animation()
 	end
@@ -122,9 +161,18 @@ class.object.new = function()
 		spr(self.spr,self.x,self.y,self.w,self.h)
 	end
 
+	obj.update_pre = function(self)
+	end
+
 	obj.update_control = function(self)
 	end
+
 	obj.update_animation = function(self)
+	end
+
+	obj.set_pos = function(self, x, y)
+		self.x = x
+		self.y = y
 	end
 
 	return obj
@@ -134,6 +182,7 @@ class.chara = {}
 class.chara.new = function()
 	local obj = class.object.new()
 	obj.object_init = obj.init
+	obj.object_update_pre = obj.update_pre
 	obj.object_update_control = obj.update_control
 	obj.object_update_animation = obj.update_animation
 
@@ -149,11 +198,16 @@ class.chara.new = function()
 		self.pre_elapsed_time = time()
 	end
 
-	obj.update_control = function(self)
-		self:object_update_control()
+	obj.update_pre = function(self)
+		self:object_update_pre()
+
 		local elapsed_time = time()
 		self.delta_time = elapsed_time - self.pre_elapsed_time
 		self.pre_elapsed_time = elapsed_time
+	end
+
+	obj.update_control = function(self)
+		self:object_update_control()
 	end
 
 	obj.update_animation = function(self)
@@ -178,9 +232,14 @@ class.player.new = function()
 	obj.chara_init = obj.init
 	obj.chara_update_control = obj.update_control
 	obj.chara_update_animation = obj.update_animation
+	obj.chara_set_pos = obj.set_pos
 
 	-- variable
-	obj.state = "idle"
+	obj.pre_anim_state = "idle"
+	obj.anim_state = "idle"
+	obj.col = col.data.new(obj.x, obj.y, obj.w, obj.h)
+	obj.pre_anim_state = "idle"
+	obj.anim_state = "idle"
 
 	-- function
 	obj.init = function(self)
@@ -191,34 +250,60 @@ class.player.new = function()
 	obj.update_control = function(self)
 		self:chara_update_control()
 		self:update_by_button()
+		self:adjust_by_col()
 	end
 
 	obj.update_animation = function(self)
+		if self.pre_anim_state != self.anim_state then
+			local state = "player_" .. self.anim_state
+			self.anim_controller:set(state)
+			self.pre_anim_state = self.anim_state
+		end
+
 		self:chara_update_animation()
 	end
 
 	obj.update_by_button = function(self)
 		local state = "run"
+		local x = self.x
+		local y = self.y
 
 		if(btn(0))then
-			self.x -= 1
+			x -= 1
 			self.direction = "left"
 		elseif(btn(1))then
-			self.x += 1
+			x += 1
 			self.direction = "right"
 		elseif(btn(2))then
-			self.y -= 1
+			y -= 1
 		elseif(btn(3))then
-			self.y += 1
+			y += 1
 		else
 			state = "idle"
 		end
 
-		if state != obj.state then
-			obj.state = state
-			state = "player_" .. state
-			self.anim_controller:set(state)
+		self:set_anim(state)
+
+		self:set_pos(x, y)
+	end
+
+	obj.adjust_by_col = function(self)
+		local is_wall, col_x, col_y = check_wall_by_col(self.col)
+		if is_wall == false then
+			return
 		end
+
+		self:set_pos(self.x + col_x, self.y + col_y)
+	end
+
+	obj.set_pos = function(self, x, y)
+		self:chara_set_pos(x, y)
+		self.col.x = x
+		self.col.y = y
+	end
+
+	obj.set_anim = function(self, state)
+		self.anim_state = state
 	end
 
 	return obj
@@ -260,7 +345,6 @@ function _draw()
 	map_info:draw()
 
 	player:draw()
-	player.anim_controller:debug_draw()
 end
 
 __gfx__
