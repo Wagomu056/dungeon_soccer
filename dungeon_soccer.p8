@@ -168,18 +168,25 @@ function check_wall(x, y)
 	return fget(map_val,0)
 end
 
-function check_wall_by_col(col_data)
-	if check_wall(col_data.ax, col_data.ay) then
-		return true
-	end
-	if check_wall(col_data.bx, col_data.ay) then
-		return true
-	end
-	if check_wall(col_data.ax, col_data.by) then
-		return true
-	end
-	if check_wall(col_data.bx, col_data.by) then
-		return true
+function check_wall_with_size(base_x, base_y, size_x, size_y)
+	local count_x = size_x
+	local count_y = size_y
+	for idx_y = 0, count_y do
+		for idx_x = 0, count_x do
+			local x = base_x + (idx_x * 8)
+			if idx_x == count_x then
+				x -= 1
+			end
+
+			local y = base_y + (idx_y * 8)
+			if idx_y == count_y then
+				y -= 1
+			end
+
+			if check_wall(x, y) then
+				return true
+			end
+		end
 	end
 
 	return false
@@ -375,13 +382,13 @@ class.player.new = function()
 	end
 
 	obj.adjust_request_pos = function(self)
-		local next_col = self.col
+		--local next_col = self.col
 		local req_pos = self.request_pos
 		local x = self.x + req_pos.x
 		local y = self.y + req_pos.y
-		next_col:set_pos(x, y)
+		--next_col:set_pos(x, y)
 
-		if check_wall_by_col(next_col) then
+		if check_wall_with_size(x, y, self.w, self.h) then
 			if req_pos.y != 0 then
 				if req_pos.y > 0 then
 					req_pos.y -= (req_pos.y % 8)
