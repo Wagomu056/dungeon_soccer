@@ -14,6 +14,10 @@ dbg.print.data = function(msg, frame, color)
 		obj.color = 12
 	end
 
+	obj.decrement_frame = function(self)
+		self.frame -= 1
+	end
+
 	return obj
 end
 
@@ -28,10 +32,14 @@ dbg.print.new = function()
 	end
 
 	obj.update = function(self)
-		for i, data in pairs(self.table) do
-			if (data.frame - 1) <= 0 then
-				del(self.table, self.table[i])
+		for data in all(self.table) do
+			if data.frame < 1 then
+				del(self.table, data)
 			end
+		end
+
+		for i, data in pairs(self.table) do
+			self.table[i]:decrement_frame()
 		end
 	end
 
@@ -46,6 +54,18 @@ dbg.print.new = function()
 end
 
 local dbg_print = dbg.print.new()
+
+-- common data --
+data = {}
+data.vector2 = {}
+data.vector2.new = function()
+	local obj = {}
+
+	obj.x = 0
+	obj.y = 0
+
+	return obj
+end
 
 -- anim --
 anim = {}
@@ -117,13 +137,28 @@ end
 -- collision --
 local col = {}
 col.data = {}
-col.data.new = function(x, y, size_x, size_y)
+col.data.new = function()
 	local obj = {}
 
-	obj.ax = x
-	obj.ay = y
-	obj.bx = x + size_x
-	obj.by = y + size_y
+	obj.ax = 0
+	obj.ay = 0
+	obj.bx = 1
+	obj.by = 1
+	obj.size_x = 1
+	obj.size_y = 1
+
+	obj.set_pos = function(self, x, y)
+		obj.ax = x
+		obj.ay = y
+		obj.bx = x + (self.size_x * 8)
+		obj.by = y + (self.size_y * 8)
+		dbg_print:set_print("colset" .. self.size_x .. ":" .. self.size_y, 1)
+	end
+
+	obj.set_size = function(self, size_x, size_y)
+		self.size_x = size_x
+		self.size_y = size_y
+	end
 
 	return obj
 end
@@ -131,7 +166,7 @@ end
 local c_inv_eight = 1 / 8
 function check_wall(x, y)
 	local map_val = mget(x / 8, y / 8)
-	return (fget(map_val,0)), (x % 8), (y % 8)
+	return fget(map_val,0), (x % 8), (y % 8)
 end
 
 function check_wall_by_col(col_data)
@@ -141,14 +176,23 @@ function check_wall_by_col(col_data)
 	local is_wall_b, col_x_b, col_y_b =
 	check_wall(col_data.bx, col_data.by)
 
+--[[
+	dbg_print:set_print(is_wall_a, 1)
+	dbg_print:set_print(col_x_a, 1)
+	dbg_print:set_print(col_y_a, 1)
+
+	dbg_print:set_print(is_wall_b, 1)
+	dbg_print:set_print(col_x_b, 1)
+	dbg_print:set_print(col_y_b, 1)
+--]]
 	if is_wall_a == is_wall_b then
 		return false
 	end
 
 	if is_wall_a == true then
-		return is_wall_a, col_x_a, (-1 * col_y_a)
+		return is_wall_a, (8 - col_x_a), (8 - col_y_a)
 	else
-		return is_wall_b, (-1 * col_x_b), col_y_b
+		return is_wall_b, (-1 * col_x_b), (-1 * col_y_b)
 	end
 end
 
@@ -238,8 +282,8 @@ class.chara.new = function()
 	obj.direction = "right"
 
 	-- function
-	obj.init = function(self)
-		self:object_init()
+	obj.init = function(self, x, y, w, h)
+		self:object_init(x, y, w, h)
 		self.pre_elapsed_time = time()
 	end
 
@@ -282,20 +326,29 @@ class.player.new = function()
 	-- variable
 	obj.pre_anim_state = "idle"
 	obj.anim_state = "idle"
-	obj.col = col.data.new(obj.x, obj.y, obj.w, obj.h)
+	obj.col = col.data.new()
 	obj.pre_anim_state = "idle"
 	obj.anim_state = "idle"
+	obj.request_pos = data.vector2.new()
 
 	-- function
-	obj.init = function(self)
-		self:chara_init()
+	obj.init = function(self, x, y, w, h)
+		self:chara_init(x, y, w, h)
+		self.col:set_size(w, h)
 		self.anim_controller:set("player_idle")
+		self.request_pos.x = x
+		self.request_pos.y = y
 	end
 
 	obj.update_control = function(self)
 		self:chara_update_control()
 		self:update_by_button()
 		self:adjust_by_col()
+		self:apply_request_pos()
+
+		local col = self.col
+		dbg_print:set_print("a:" .. col.ax .. ":" .. col.ay, 1)
+		dbg_print:set_print("b:" .. col.bx .. ":" .. col.by, 1)
 	end
 
 	obj.update_animation = function(self)
@@ -327,25 +380,62 @@ class.player.new = function()
 			state = "idle"
 		end
 
-		self:set_anim(state)
+		self.request_pos.x = x
+		self.request_pos.y = y
 
-		self:set_pos(x, y)
+		self:set_anim(state)
 	end
 
 	obj.adjust_by_col = function(self)
-		local is_wall, col_x, col_y = check_wall_by_col(self.col)
-		dbg_print:set_print(is_wall, 1)
-		if is_wall == false then
-			return
+		local adjust_x = self:calc_adjust_pos("horizontal")
+		local adjust_y = self:calc_adjust_pos("vertical")
+
+		self.request_pos.x += adjust_x
+		self.request_pos.y += adjust_y
+	end
+
+	obj.apply_one_only = function(self, base, apply, dir_type)
+		local affected = base
+		if dir_type == "horizontal" then
+			affected.x = apply.x
+		elseif dir_type == "vertical" then
+			affected.y = apply.y
+		end
+		return affected
+	end
+
+	obj.calc_adjust_pos = function(self, dir_type)
+		local current_pos = data.vector2.new()
+		current_pos.x = self.x
+		current_pos.y = self.y
+		
+		local pos = self:apply_one_only(current_pos, self.request_pos, dir_type)
+		local col = self.col
+		col:set_pos(pos.x, pos.y)
+
+		local is_wall, col_x, col_y = check_wall_by_col(col)
+
+		local adjut_distance = 0
+		if is_wall then
+			if dir_type == "horizontal" then
+				adjut_distance = col_x
+			elseif dir_type == "vertical" then
+				adjut_distance = col_y
+			end
 		end
 
-		self:set_pos(self.x + col_x, self.y + col_y)
+		return adjut_distance
+	end
+
+	obj.apply_request_pos = function(self)
+		local x = self.request_pos.x
+		local y = self.request_pos.y
+		self:set_pos(x, y)
 	end
 
 	obj.set_pos = function(self, x, y)
 		self:chara_set_pos(x, y)
-		self.col.x = x
-		self.col.y = y
+		self.col:set_pos(x, y)
 	end
 
 	obj.set_anim = function(self, state)
@@ -383,8 +473,8 @@ function _init()
 end
 
 function _update()
-	dbg_print:update()
 	player:update()
+	dbg_print:update()
 end
 
 function _draw()
