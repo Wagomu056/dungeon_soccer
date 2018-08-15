@@ -162,7 +162,6 @@ col.data.new = function()
 	return obj
 end
 
-local c_inv_eight = 1 / 8
 function check_wall(x, y)
 	local map_val = mget(x / 8, y / 8)
 	return fget(map_val,0)
@@ -382,28 +381,27 @@ class.player.new = function()
 	end
 
 	obj.adjust_request_pos = function(self)
-		--local next_col = self.col
 		local req_pos = self.request_pos
 		local x = self.x + req_pos.x
 		local y = self.y + req_pos.y
-		--next_col:set_pos(x, y)
 
 		if check_wall_with_size(x, y, self.w, self.h) then
 			if req_pos.y != 0 then
-				if req_pos.y > 0 then
-					req_pos.y -= (req_pos.y % 8)
-				else
-					req_pos.y += (8 - (req_pos.y % 8))
-				end
+				req_pos.y = self:calc_reflect(req_pos.y)
 			elseif req_pos.x != 0 then
-				if req_pos.x > 0 then
-					req_pos.x -= (req_pos.x % 8)
-				else
-					req_pos.x += (8 - (req_pos.x % 8))
-				end
+				req_pos.x = self:calc_reflect(req_pos.x)
 			end
 
 			self.request_pos = req_pos
+		end
+	end
+
+	obj.calc_reflect = function(self, value)
+		local mod = (value % 8)
+		if value > 0 then
+			return (value - mod)
+		else
+			return (value + (8 - mod))
 		end
 	end
 
