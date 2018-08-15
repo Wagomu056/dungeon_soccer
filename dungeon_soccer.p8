@@ -150,9 +150,8 @@ col.data.new = function()
 	obj.set_pos = function(self, x, y)
 		obj.ax = x
 		obj.ay = y
-		obj.bx = x + (self.size_x * 8)
-		obj.by = y + (self.size_y * 8)
-		dbg_print:set_print("colset" .. self.size_x .. ":" .. self.size_y, 1)
+		obj.bx = x + ((self.size_x * 8) - 1)
+		obj.by = y + ((self.size_y * 8) - 1)
 	end
 
 	obj.set_size = function(self, size_x, size_y)
@@ -166,34 +165,24 @@ end
 local c_inv_eight = 1 / 8
 function check_wall(x, y)
 	local map_val = mget(x / 8, y / 8)
-	return fget(map_val,0), (x % 8), (y % 8)
+	return fget(map_val,0)
 end
 
 function check_wall_by_col(col_data)
-	local is_wall_a, col_x_a, col_y_a =
-	check_wall(col_data.ax, col_data.ay)
-
-	local is_wall_b, col_x_b, col_y_b =
-	check_wall(col_data.bx, col_data.by)
-
---[[
-	dbg_print:set_print(is_wall_a, 1)
-	dbg_print:set_print(col_x_a, 1)
-	dbg_print:set_print(col_y_a, 1)
-
-	dbg_print:set_print(is_wall_b, 1)
-	dbg_print:set_print(col_x_b, 1)
-	dbg_print:set_print(col_y_b, 1)
---]]
-	if is_wall_a == is_wall_b then
-		return false
+	if check_wall(col_data.ax, col_data.ay) then
+		return true
+	end
+	if check_wall(col_data.bx, col_data.ay) then
+		return true
+	end
+	if check_wall(col_data.ax, col_data.by) then
+		return true
+	end
+	if check_wall(col_data.bx, col_data.by) then
+		return true
 	end
 
-	if is_wall_a == true then
-		return is_wall_a, (8 - col_x_a), (8 - col_y_a)
-	else
-		return is_wall_b, (-1 * col_x_b), (-1 * col_y_b)
-	end
+	return false
 end
 
 -- class --
@@ -336,19 +325,15 @@ class.player.new = function()
 		self:chara_init(x, y, w, h)
 		self.col:set_size(w, h)
 		self.anim_controller:set("player_idle")
-		self.request_pos.x = x
-		self.request_pos.y = y
+		self.request_pos.x = 0
+		self.request_pos.y = 0
 	end
 
 	obj.update_control = function(self)
 		self:chara_update_control()
-		self:update_by_button()
-		self:adjust_by_col()
+		self:set_request_pos_by_button()
+		self:adjust_request_pos()
 		self:apply_request_pos()
-
-		local col = self.col
-		dbg_print:set_print("a:" .. col.ax .. ":" .. col.ay, 1)
-		dbg_print:set_print("b:" .. col.bx .. ":" .. col.by, 1)
 	end
 
 	obj.update_animation = function(self)
@@ -361,21 +346,24 @@ class.player.new = function()
 		self:chara_update_animation()
 	end
 
-	obj.update_by_button = function(self)
+	obj.set_request_pos_by_button = function(self)
 		local state = "run"
-		local x = self.x
-		local y = self.y
 
-		if(btn(0))then
-			x -= 1
+		local speed = 1
+		local x = 0
+		local y = 0
+
+		-- y is high prio
+		if(btn(2))then
+			y = -speed
+		elseif(btn(3))then
+			y = speed
+		elseif(btn(0))then
+			x = -speed
 			self.direction = "left"
 		elseif(btn(1))then
-			x += 1
+			x = speed
 			self.direction = "right"
-		elseif(btn(2))then
-			y -= 1
-		elseif(btn(3))then
-			y += 1
 		else
 			state = "idle"
 		end
@@ -386,51 +374,39 @@ class.player.new = function()
 		self:set_anim(state)
 	end
 
-	obj.adjust_by_col = function(self)
-		local adjust_x = self:calc_adjust_pos("horizontal")
-		local adjust_y = self:calc_adjust_pos("vertical")
+	obj.adjust_request_pos = function(self)
+		local next_col = self.col
+		local req_pos = self.request_pos
+		local x = self.x + req_pos.x
+		local y = self.y + req_pos.y
+		next_col:set_pos(x, y)
 
-		self.request_pos.x += adjust_x
-		self.request_pos.y += adjust_y
-	end
-
-	obj.apply_one_only = function(self, base, apply, dir_type)
-		local affected = base
-		if dir_type == "horizontal" then
-			affected.x = apply.x
-		elseif dir_type == "vertical" then
-			affected.y = apply.y
-		end
-		return affected
-	end
-
-	obj.calc_adjust_pos = function(self, dir_type)
-		local current_pos = data.vector2.new()
-		current_pos.x = self.x
-		current_pos.y = self.y
-		
-		local pos = self:apply_one_only(current_pos, self.request_pos, dir_type)
-		local col = self.col
-		col:set_pos(pos.x, pos.y)
-
-		local is_wall, col_x, col_y = check_wall_by_col(col)
-
-		local adjut_distance = 0
-		if is_wall then
-			if dir_type == "horizontal" then
-				adjut_distance = col_x
-			elseif dir_type == "vertical" then
-				adjut_distance = col_y
+		if check_wall_by_col(next_col) then
+			if req_pos.y != 0 then
+				if req_pos.y > 0 then
+					req_pos.y -= (req_pos.y % 8)
+				else
+					req_pos.y += (8 - (req_pos.y % 8))
+				end
+			elseif req_pos.x != 0 then
+				if req_pos.x > 0 then
+					req_pos.x -= (req_pos.x % 8)
+				else
+					req_pos.x += (8 - (req_pos.x % 8))
+				end
 			end
-		end
 
-		return adjut_distance
+			self.request_pos = req_pos
+		end
 	end
 
 	obj.apply_request_pos = function(self)
-		local x = self.request_pos.x
-		local y = self.request_pos.y
+		local x = self.x + self.request_pos.x
+		local y = self.y + self.request_pos.y
 		self:set_pos(x, y)
+
+		self.request_pos.x = 0
+		self.request_pos.y = 0
 	end
 
 	obj.set_pos = function(self, x, y)
