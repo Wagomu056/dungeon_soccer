@@ -330,6 +330,8 @@ class.player.new = function()
 	obj.pre_anim_state = "idle"
 	obj.anim_state = "idle"
 	obj.request_pos = data.vector2.new()
+	obj.move_direction = "none"
+	obj.pre_button = 0
 
 	-- function
 	obj.init = function(self, x, y, w, h)
@@ -342,6 +344,7 @@ class.player.new = function()
 
 	obj.update_control = function(self)
 		self:chara_update_control()
+		self:update_move_direction()
 		self:set_request_pos_by_button()
 		self:adjust_request_pos()
 		self:apply_request_pos()
@@ -357,6 +360,37 @@ class.player.new = function()
 		self:chara_update_animation()
 	end
 
+	obj.update_move_direction = function(self)
+		local button = btn()
+		if button == self.pre_button then
+			return
+		end
+
+		local xor_button = bxor(button, self.pre_button)
+		if band(button, xor_button) != 0 then
+			self.move_direction
+			= self:convert_button_to_direction(xor_button)
+		else
+			self.move_direction
+			= self:convert_button_to_direction(button)
+		end
+
+		self.pre_button = button
+	end
+
+	obj.convert_button_to_direction = function(self, button)
+		local btn_bit = button
+		local directions = {"left", "right", "up", "down"}
+		for i = 0, 3 do
+			local chk_bit = shl(1, i)
+			if band(btn_bit, chk_bit) != 0 then
+				return directions[i + 1]
+			end
+		end
+
+		return "none"
+	end
+
 	obj.set_request_pos_by_button = function(self)
 		local state = "run"
 
@@ -364,15 +398,15 @@ class.player.new = function()
 		local x = 0
 		local y = 0
 
-		-- y is high prio
-		if(btn(2))then
-			y = -speed
-		elseif(btn(3))then
+		local move_dir = self.move_direction
+		if move_dir == "down" then
 			y = speed
-		elseif(btn(0))then
+		elseif move_dir == "up" then
+			y = -speed
+		elseif move_dir == "left" then
 			x = -speed
 			self.direction = "left"
-		elseif(btn(1))then
+		elseif move_dir == "right" then
 			x = speed
 			self.direction = "right"
 		else
