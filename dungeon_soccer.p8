@@ -365,17 +365,27 @@ class.player.new = function()
 		if button == self.pre_button then
 			return
 		end
+		self.pre_button = button
 
-		local xor_button = bxor(button, self.pre_button)
-		if band(button, xor_button) != 0 then
-			self.move_direction
-			= self:convert_button_to_direction(xor_button)
-		else
-			self.move_direction
-			= self:convert_button_to_direction(button)
+		if button == 0 then
+			self.move_direction = "none"
+			return
 		end
 
-		self.pre_button = button
+		local directions = {"left", "right", "up", "down"}
+		for i = 0, 3 do
+			if btnp(i) then
+				self.move_direction = directions[i + 1]
+				return
+			end
+		end
+
+		for i = 0, 3 do
+			if btn(i) then
+				self.move_direction = directions[i + 1]
+				return
+			end
+		end
 	end
 
 	obj.convert_button_to_direction = function(self, button)
