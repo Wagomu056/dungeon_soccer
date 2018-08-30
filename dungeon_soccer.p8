@@ -196,6 +196,15 @@ function check_wall_with_size(base_x, base_y, size_x, size_y)
 	return false
 end
 
+function calc_reflect(value)
+	local mod = (value % 8)
+	if value > 0 then
+		return (value - mod)
+	else
+		return (value + (8 - mod))
+	end
+end
+
 -- class --
 local class = {}
 
@@ -479,11 +488,83 @@ class.ball = {}
 class.ball.new = function()
 	local obj = class.chara.new()
 	obj.chara_init = obj.init
-	
+	obj.chara_update_control = obj.update_control
+
+	-- variables
+	obj.dx = 0.0
+	obj.dy = 0.0
+
+	-- parameters
+	obj.decay = 0.01
+
 	-- function
 	obj.init = function(self, x, y)
 		self:chara_init(x, y, 1, 1)
 		self.anim_controller:set("ball_idle")
+	end
+
+	obj.update_control = function(self)
+		self:chara_update_control()
+
+		if btnp(4) then
+			self:add_force(1,1)
+		end
+
+		self:apply_delta_move()
+		self:update_delta_move()
+	end
+
+	obj.apply_delta_move = function(self)
+		local reflect_x = 0.0
+		local next_x = self.x + self.dx
+		if check_wall_with_size(next_x, self.y, self.w, self.h) then
+			reflect_x = self.dx * -1.0
+			self.dx = calc_reflect(self.dx)
+		end
+		self.x += self.dx
+
+		if reflect_x != 0 then
+			self.dx = reflect_x
+		end
+
+		local reflect_y = 0.0
+		local next_y = self.y + self.dy
+		if check_wall_with_size(self.x, next_y, self.w, self.h) then
+			reflect_y = self.dy * -1.0
+			self.dy = calc_reflect(self.dy)
+		end
+		self.y += self.dy
+
+		if reflect_y != 0 then
+			self.dy = reflect_y
+		end
+	end
+
+	obj.update_delta_move = function(self)
+		self.dx = self:update_delta_move_value(self.dx)
+		self.dy = self:update_delta_move_value(self.dy)
+	end
+
+	obj.update_delta_move_value = function(self, value)
+		local tmp = value
+		if tmp > 0 then
+			tmp -= self.decay
+			if tmp <= 0 then
+				tmp = 0
+			end
+		elseif tmp < 0 then
+			tmp += self.decay
+			if tmp >= 0 then
+				tmp = 0
+			end
+		end
+
+		return tmp
+	end
+
+	obj.add_force = function(self, x, y)
+		self.dx += x
+		self.dy += y
 	end
 
 	return obj
