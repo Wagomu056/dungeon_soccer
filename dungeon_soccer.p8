@@ -293,6 +293,7 @@ class.chara.new = function()
 	obj.anim_controller = anim.controller.new()
 	obj.pre_elapsed_time = 0.0
 	obj.delta_time = 0.0
+	obj.anim_time_scale = 1.0
 	obj.direction = "right"
 
 	-- function
@@ -315,7 +316,7 @@ class.chara.new = function()
 
 	obj.update_animation = function(self)
 		self:object_update_animation()
-		self.anim_controller:update(self.delta_time)
+		self.anim_controller:update(self.delta_time * self.anim_time_scale)
 		self.spr, self.w, self.h = self.anim_controller:get_spr()
 	end
 
@@ -517,6 +518,7 @@ class.ball.new = function()
 
 		self:apply_delta_move()
 		self:update_delta_move()
+		self:update_anim_scale()
 	end
 
 	obj.apply_delta_move = function(self)
@@ -570,6 +572,11 @@ class.ball.new = function()
 	obj.add_force = function(self, x, y)
 		self.dx += x
 		self.dy += y
+	end
+
+	obj.update_anim_scale = function(self)
+		local delta_move = abs(self.dx) + abs(self.dy)
+		self.anim_time_scale = delta_move / 1.0
 	end
 
 	return obj
