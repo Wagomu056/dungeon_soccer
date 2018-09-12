@@ -58,11 +58,11 @@ local dbg_print = dbg.print.new()
 -- common data --
 data = {}
 data.vector2 = {}
-data.vector2.new = function()
+data.vector2.new = function(x, y)
 	local obj = {}
 
-	obj.x = 0
-	obj.y = 0
+	obj.x = x
+	obj.y = y
 
 	return obj
 end
@@ -74,8 +74,8 @@ anim.data.new = function(sprites, w, h, time, is_loop)
 	local obj = {}
 
 	obj.sprites = sprites
-	obj.w = w
-	obj.h = h
+	obj.spr_w = w
+	obj.spr_h = h
 	obj.time = time
 	obj.is_loop = is_loop
 
@@ -132,7 +132,7 @@ anim.controller.new = function()
 	end
 
 	obj.get_spr = function(self)
-		return self.data.sprites[self.spr_index + 1], self.data.w, self.data.h
+		return self.data.sprites[self.spr_index + 1], self.data.spr_w, self.data.spr_h
 	end
 
 	obj.debug_draw = function(self)
@@ -185,29 +185,38 @@ function check_wall(x, y)
 	return fget(map_val,0)
 end
 
-function check_wall_with_size(base_x, base_y, size_x, size_y, size_rate)
-	local tmp_size_rate = 8
-	if size_rate != nil then
-		tmp_size_rate = size_rate
-	end
+function check_wall_by_object(check_x, check_y, object)
+	local base_x = check_x
+	local base_y = check_y
 
-	local count_x = size_x
-	local count_y = size_y
+	local count_x = object.hit_w / 8
+	local count_y = object.hit_h / 8
 	for idx_y = 0, count_y do
 		for idx_x = 0, count_x do
-			local x = base_x + (idx_x * tmp_size_rate)
-			if idx_x == count_x then
-				x -= 1
+			local x = base_x
+			if idx_x != 0 then
+				x += (idx_x * 8) - 1
 			end
 
-			local y = base_y + (idx_y * tmp_size_rate)
-			if idx_y == count_y then
-				y -= 1
+			local y = base_y
+			if idx_y != 0 then
+				y += (idx_y * 8) - 1
 			end
 
 			if check_wall(x, y) then
 				return true
 			end
+		end
+	end
+
+	local mod_x = object.hit_w % 8
+	local mod_y = object.hit_h % 8
+	if mod_x != 0 or mod_y != 0 then
+		local x = base_x + object.hit_w - 1
+		local y = base_y + object.hit_h - 1
+
+		if check_wall(x, y) then
+			return true
 		end
 	end
 
@@ -221,6 +230,38 @@ function calc_reflect(value)
 	else
 		return (value + (8 - mod))
 	end
+end
+
+data.hitbox = {}
+data.hitbox.new = function(chara)
+	local obj = {}
+
+	obj.aa = data.vector2.new(chara.x, chara.y)
+	obj.bb = data.vector2.new(
+		chara.x + chara.hit_w - 1
+		,chara.y + chara.hit_h - 1)
+
+	return obj
+end
+
+function check_hit(chara_a, chara_b)
+	local box_a = data.hitbox.new(chara_a) 
+	local box_b = data.hitbox.new(chara_b)
+
+	if box_a.aa.x > box_b.bb.x then
+		return false
+	end
+	if box_a.bb.x < box_b.aa.x then
+		return false
+	end
+	if box_a.aa.y > box_b.bb.y then
+		return false
+	end
+	if box_a.bb.y < box_b.aa.y then
+		return false
+	end
+	
+	return true
 end
 
 -- class --
@@ -247,25 +288,15 @@ class.object.new = function()
 	-- variables
 	obj.x = 0
 	obj.y = 0
-	obj.w = 1
-	obj.h = 1
+	obj.spr_w = 1
+	obj.spr_h = 1
 	obj.spr = 0
+	obj.hit_w = 8
+	obj.hit_h = 8
 
 	-- function
-	obj.init = function(self, x, y, w, h)
+	obj.init = function(self)
 		self:actor_init()
-		if x != nil then
-			self.x = x
-		end
-		if y != nil then
-			self.y = y
-		end
-		if w != nil then
-			self.w = w
-		end
-		if h != nil then
-			self.h = h
-		end
 	end
 	obj.update = function(self)
 		self:actor_update()
@@ -274,7 +305,7 @@ class.object.new = function()
 		self:update_animation()
 	end
 	obj.draw = function(self)
-		spr(self.spr,self.x,self.y,self.w,self.h)
+		spr(self.spr,self.x,self.y,self.spr_w,self.spr_h)
 	end
 
 	obj.update_pre = function(self)
@@ -289,6 +320,16 @@ class.object.new = function()
 	obj.set_pos = function(self, x, y)
 		self.x = x
 		self.y = y
+	end
+
+	obj.set_spr_size = function(self, w, h)
+		self.spr_w = w
+		self.spr_h = h
+	end
+
+	obj.set_hit_size = function(self, w, h)
+		self.hit_w = w
+		self.hit_h = h
 	end
 
 	return obj
@@ -310,8 +351,8 @@ class.chara.new = function()
 	obj.direction = "right"
 
 	-- function
-	obj.init = function(self, x, y, w, h)
-		self:object_init(x, y, w, h)
+	obj.init = function(self)
+		self:object_init()
 		self.pre_elapsed_time = time()
 	end
 
@@ -330,13 +371,13 @@ class.chara.new = function()
 	obj.update_animation = function(self)
 		self:object_update_animation()
 		self.anim_controller:update(self.delta_time * self.anim_time_scale)
-		self.spr, self.w, self.h = self.anim_controller:get_spr()
+		self.spr, self.spr_w, self.spr_h = self.anim_controller:get_spr()
 	end
 
 	obj.draw = function(self)
 		spr(self.spr, 
 			self.x, self.y,
-			self.w, self.h,
+			self.spr_w, self.spr_h,
 			self.direction == "left")
 	end
 
@@ -354,17 +395,19 @@ class.player.new = function()
 	-- variable
 	obj.pre_anim_state = "idle"
 	obj.anim_state = "idle"
-	obj.col = col.data.new()
+	--obj.col = col.data.new()
 	obj.pre_anim_state = "idle"
 	obj.anim_state = "idle"
-	obj.request_pos = data.vector2.new()
+	obj.request_pos = data.vector2.new(0, 0)
 	obj.action = "none"
 	obj.pre_button = 0
 
 	-- function
-	obj.init = function(self, x, y, w, h)
-		self:chara_init(x, y, w, h)
-		self.col:set_size(w, h)
+	obj.init = function(self)
+		self:chara_init()
+		self:set_spr_size(1,2)
+		self:set_hit_size(8,16)
+		--self.col:set_size(w, h)
 		self.anim_controller:set("player_idle")
 		self.request_pos.x = 0
 		self.request_pos.y = 0
@@ -478,23 +521,14 @@ class.player.new = function()
 		local x = self.x + req_pos.x
 		local y = self.y + req_pos.y
 
-		if check_wall_with_size(x, y, self.w, self.h) then
+		if check_wall_by_object(x, y, self) then
 			if req_pos.y != 0 then
-				req_pos.y = self:calc_reflect(req_pos.y)
+				req_pos.y = calc_reflect(req_pos.y)
 			elseif req_pos.x != 0 then
-				req_pos.x = self:calc_reflect(req_pos.x)
+				req_pos.x = calc_reflect(req_pos.x)
 			end
 
 			self.request_pos = req_pos
-		end
-	end
-
-	obj.calc_reflect = function(self, value)
-		local mod = (value % 8)
-		if value > 0 then
-			return (value - mod)
-		else
-			return (value + (8 - mod))
 		end
 	end
 
@@ -509,7 +543,7 @@ class.player.new = function()
 
 	obj.set_pos = function(self, x, y)
 		self:chara_set_pos(x, y)
-		self.col:set_pos(x, y)
+		--self.col:set_pos(x, y)
 	end
 
 	obj.set_anim = function(self, state)
@@ -533,18 +567,15 @@ class.ball.new = function()
 	obj.decay = 0.01
 
 	-- function
-	obj.init = function(self, x, y)
-		self:chara_init(x, y, 1, 1)
+	obj.init = function(self)
+		self:chara_init()
+		self:set_spr_size(1,1)
+		self:set_hit_size(4,4)
 		self.anim_controller:set("ball_idle")
 	end
 
 	obj.update_control = function(self)
 		self:chara_update_control()
-
-		if btnp(4) then
-			self:add_force(1,1)
-		end
-
 		self:apply_delta_move()
 		self:update_delta_move()
 		self:update_anim_scale()
@@ -553,7 +584,7 @@ class.ball.new = function()
 	obj.apply_delta_move = function(self)
 		local reflect_x = 0.0
 		local next_x = self.x + self.dx
-		if check_wall_with_size(next_x, self.y, self.w, self.h, 4) then
+		if check_wall_by_object(next_x, self.y, self) then
 			reflect_x = self.dx * -1.0
 			self.dx = calc_reflect(self.dx)
 		end
@@ -565,7 +596,7 @@ class.ball.new = function()
 
 		local reflect_y = 0.0
 		local next_y = self.y + self.dy
-		if check_wall_with_size(self.x, next_y, self.w, self.h, 4) then
+		if check_wall_by_object(self.x, next_y, self) then
 			reflect_y = self.dy * -1.0
 			self.dy = calc_reflect(self.dy)
 		end
@@ -636,12 +667,23 @@ local ball = class.ball.new()
 
 -- system --
 function _init()
-	player:init(8, 8, 1, 2)
-	ball:init(16, 16)
+	player:init()
+	player:set_pos(8,8)
+
+	ball:init()
+	ball:set_pos(16, 16)
 end
 
 function _update()
 	player:update()
+
+	--@todo must create hit_check controller
+	if btnp(4) then
+		if check_hit(player, ball) then
+			ball:add_force(1, 1)
+		end
+	end
+
 	ball:update()
 	dbg_print:update()
 end
