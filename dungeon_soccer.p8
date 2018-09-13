@@ -233,21 +233,37 @@ function calc_reflect(value)
 end
 
 data.hitbox = {}
-data.hitbox.new = function(chara)
+data.hitbox.new = function(owner)
 	local obj = {}
 
-	obj.aa = data.vector2.new(chara.x, chara.y)
-	obj.bb = data.vector2.new(
-		chara.x + chara.hit_w - 1
-		,chara.y + chara.hit_h - 1)
+	obj.aa = data.vector2.new(0, 0)
+	obj.bb = data.vector2.new(0, 0)
+	obj.width = width
+	obj.hight = hight
+	obj.owner = owner
+
+	obj.set_pos = function(self, x, y)
+		self.aa.x = x
+		self.aa.y = y
+		self.bb.x = x + self.width - 1
+		self.bb.y = y + self.hight - 1
+	end
+
+	obj.set_size = function(self, w, h)
+		self.width = w
+		self.hight = h
+	end
+
+	obj.debug_draw = function(self, color)
+		rect(self.aa.x, self.aa.y
+			,self.bb.x, self.bb.y
+			,color)
+	end
 
 	return obj
 end
 
-function check_hit(chara_a, chara_b)
-	local box_a = data.hitbox.new(chara_a) 
-	local box_b = data.hitbox.new(chara_b)
-
+function check_hit(box_a, box_b)
 	if box_a.aa.x > box_b.bb.x then
 		return false
 	end
@@ -260,12 +276,46 @@ function check_hit(chara_a, chara_b)
 	if box_a.bb.y < box_b.aa.y then
 		return false
 	end
-	
+
 	return true
 end
 
 -- class --
 local class = {}
+
+class.hit_checker ={}
+class.hit_checker.new = function()
+	local obj = {}
+	obj.atk_list = {}
+	obj.def_list = {}
+
+	obj.check = function(self)
+		for atk_i, atk in pairs(self.atk_list) do
+			for def_i, def in pairs(self.def_list) do
+				if check_hit(atk, def) then
+					atk.owner:atk_callback(def)
+					def.owner:def_callback(atk)
+				end
+			end
+		end
+
+		for i = 1, #self.atk_list do
+			self.atk_list[i] = nil
+		end
+	end
+
+	obj.debug_draw = function(self)
+		for i, box in pairs(self.def_list) do
+			box:debug_draw(12)
+		end
+		for i, box in pairs(self.atk_list) do
+			box:debug_draw(14)
+		end
+	end
+
+	return obj
+end
+local hit_checker = class.hit_checker.new()
 
 class.actor = {}
 class.actor.new = function()
@@ -349,6 +399,7 @@ class.chara.new = function()
 	obj.delta_time = 0.0
 	obj.anim_time_scale = 1.0
 	obj.direction = "right"
+	obj.hitbox = data.hitbox.new(obj)
 
 	-- function
 	obj.init = function(self)
@@ -369,6 +420,8 @@ class.chara.new = function()
 	end
 
 	obj.update_animation = function(self)
+		self.hitbox:set_pos(self.x, self.y)
+
 		self:object_update_animation()
 		self.anim_controller:update(self.delta_time * self.anim_time_scale)
 		self.spr, self.spr_w, self.spr_h = self.anim_controller:get_spr()
@@ -379,6 +432,14 @@ class.chara.new = function()
 			self.x, self.y,
 			self.spr_w, self.spr_h,
 			self.direction == "left")
+
+		--self.hitbox:debug_draw()
+	end
+
+	obj.atk_callback = function(self)
+	end
+
+	obj.def_callback = function(self, atk_box)
 	end
 
 	return obj
@@ -395,22 +456,28 @@ class.player.new = function()
 	-- variable
 	obj.pre_anim_state = "idle"
 	obj.anim_state = "idle"
-	--obj.col = col.data.new()
 	obj.pre_anim_state = "idle"
 	obj.anim_state = "idle"
 	obj.request_pos = data.vector2.new(0, 0)
 	obj.action = "none"
 	obj.pre_button = 0
+	obj.kick_hitbox = data.hitbox.new(obj)
 
 	-- function
 	obj.init = function(self)
 		self:chara_init()
 		self:set_spr_size(1,2)
+
 		self:set_hit_size(8,16)
-		--self.col:set_size(w, h)
+		self.hitbox:set_size(self.hit_w, self.hit_h)
+		self.hitbox:set_pos(self.x, self.y)
+
 		self.anim_controller:set("player_idle")
 		self.request_pos.x = 0
 		self.request_pos.y = 0
+		self.kick_hitbox:set_size(8, 16)
+
+		add(hit_checker.def_list, self.hitbox)
 	end
 
 	obj.update_control = function(self)
@@ -445,6 +512,7 @@ class.player.new = function()
 
 		if btnp(4) then
 			self.action = "kick"
+			self:regist_kick_atk()
 			return
 		end
 
@@ -485,9 +553,6 @@ class.player.new = function()
 			anim_state = "idle"
 		elseif action == "kick" then
 			anim_state = "kick"
-			if self.anim_controller.is_end == true then
-				--anim_state = "idle"
-			end
 		else
 			anim_state = "run"
 
@@ -543,11 +608,25 @@ class.player.new = function()
 
 	obj.set_pos = function(self, x, y)
 		self:chara_set_pos(x, y)
-		--self.col:set_pos(x, y)
 	end
 
 	obj.set_anim = function(self, state)
 		self.anim_state = state
+	end
+
+	obj.regist_kick_atk = function(self)
+		local offset_x = 4
+		if self.direction == "left" then
+			offset_x *= -1
+		end
+
+		local offset_y = 0
+
+		local x = self.x + offset_x
+		local y = self.y + offset_y
+
+		self.kick_hitbox:set_pos(x, y)
+		add(hit_checker.atk_list, self.kick_hitbox)
 	end
 
 	return obj
@@ -570,8 +649,14 @@ class.ball.new = function()
 	obj.init = function(self)
 		self:chara_init()
 		self:set_spr_size(1,1)
+
 		self:set_hit_size(4,4)
+		self.hitbox:set_size(self.hit_w, self.hit_h)
+		self.hitbox:set_pos(self.x, self.y)
+
 		self.anim_controller:set("ball_idle")
+
+		add(hit_checker.def_list, self.hitbox)
 	end
 
 	obj.update_control = function(self)
@@ -639,6 +724,26 @@ class.ball.new = function()
 		self.anim_time_scale = delta_move / 1.0
 	end
 
+	obj.def_callback = function(self, atk_box)
+		local atk_direction = atk_box.owner.direction
+		local force_x = 2.5
+		if atk_direction == "left" then
+			force_x *= -1
+		end
+
+		local atk_y = atk_box.bb.y - 4
+		local self_y = self.hitbox.aa.y + (self.hitbox.hight * 0.5)
+		local is_up = (self_y < atk_y)
+		local force_y = 0.3
+		if is_up then
+			force_y *= -1
+		end
+
+		printh("self_y:" .. self_y .. " atk_y:" .. atk_y)
+		printh("x:" .. force_x .. " y:" .. force_y)
+		self:add_force(force_x, force_y)
+	end
+
 	return obj
 end
 
@@ -675,15 +780,9 @@ function _init()
 end
 
 function _update()
+	hit_checker:check()
+
 	player:update()
-
-	--@todo must create hit_check controller
-	if btnp(4) then
-		if check_hit(player, ball) then
-			ball:add_force(1, 1)
-		end
-	end
-
 	ball:update()
 	dbg_print:update()
 end
@@ -692,6 +791,7 @@ function _draw()
 	map_info:draw()
 	player:draw()
 	ball:draw()
+	--hit_checker:debug_draw()
 	dbg_print:draw()
 end
 
